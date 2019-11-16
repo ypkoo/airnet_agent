@@ -2,18 +2,19 @@ import airsim
 import socket, threading, time, json, select, datetime
 import pprint
 from pathlib import Path
+from airnet_config import * 
+from math import sqrt
 
-ADDR = ("127.0.0.1", 43211)
-SETTINGS_FILE = Path("C:/Users/LANADA/Documents/AirSim/settings.json")
 
 class GCSAgent(threading.Thread):
 
-    def __init__(self, client, name, lock):
+    def __init__(self, client, name, lock, vehicles):
         super(GCSAgent, self).__init__()
         self.lock = lock
         self.id = name[-1]
         self.name = name
         self.client = client
+        self.vehicles = vehicles # for reset
         self.alive = threading.Event()
         self.alive.set()
 
@@ -24,27 +25,25 @@ class GCSAgent(threading.Thread):
         while self.alive.isSet():
             time.sleep(.3)
             status = self.get_status()
-            self.s.send(json.dumps(status).encode())
-            # recv_data = self.s.recv(2048)
-            # print "data sent: ", data
-            ready = select.select([self.s], [], [], 0.1)
+            self.sock.send(json.dumps(status).encode())
+            ready = select.select([self.sock], [], [], 0.1)
             if ready[0]:
-                recv_data = json.loads(self.s.recv(2048))
-                print ("received data: ", recv_data)
+                recv_data = json.loads(self.sock.recv(2048))
+                print (self.name, "received data: ", recv_data)
 
                 cmd = recv_data["command"]
                 self.process_command(cmd)
 
             else:
                 continue
-        self.s.close()
+        self.sock.close()
 
     def socket_init(self):
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect(ADDR)
-        self.s.setblocking(0)
-        # self.s.settimeout(.2)
-        print ("connected to", ADDR)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect(GCS_ADDR)
+        self.sock.setblocking(0)
+        # self.sock.settimeout(.2)
+        print ("connected to", GCS_ADDR)
 
     def multirotor_init(self):
         self.lock.acquire()
@@ -58,9 +57,39 @@ class GCSAgent(threading.Thread):
             self.client.takeoffAsync(vehicle_name=self.name)
             self.lock.release()
         elif cmd == "start":
-            print(self.name, "start!")
+            initPosX = int(self.vehicles[self.name]["X"])
+            initPosY = int(self.vehicles[self.name]["Y"])
+            distFromZero = sqrt(initPosX**2 + initPosY**2)
+
+            vel = 5
+            velX = vel * (initPosX / distFromZero)
+            velY = vel * (initPosY / distFromZero)
+
+            self.lock.acquire()
+            self.client.moveByVelocityAsync(velX, velY, 0, duration=3, vehicle_name=self.name)
+
+            self.lock.release()
         elif cmd == "land":
-            print(self.name, "land!")
+            self.lock.acquire()
+            self.client.landAsync(vehicle_name=self.name)
+            self.lock.release()
+        elif cmd == "goHome":
+            self.lock.acquire()
+            self.client.goHomeAsync(vehicle_name=self.name)
+            self.lock.release()
+        elif cmd == "reset":
+            # if I'm the first drone, do reset. Otherwise, do nothing.
+            if self.name == list(self.vehicles.keys())[0]:
+                print(self.name, "reset!")
+                self.lock.acquire()
+                self.client.reset()
+
+                # enableApiControl should be done after reset. 
+                for drone in list(self.vehicles.keys()):
+                    self.client.enableApiControl(True, drone)
+                    self.client.armDisarm(True, drone)
+                self.lock.release()
+
 
     def get_status(self):
         self.lock.acquire()
@@ -90,8 +119,8 @@ class GCSAgent(threading.Thread):
 if __name__ == "__main__":
 
     with open(SETTINGS_FILE) as settings:
-        data = json.load(settings)
-        drones = data["Vehicles"].keys()
+        vehicles = json.load(settings)["Vehicles"]
+        drones = list(vehicles.keys())
 
     client = airsim.MultirotorClient()
     client.confirmConnection()
@@ -101,9 +130,10 @@ if __name__ == "__main__":
     agents = []
 
     for drone in drones:
-        agent = GCSAgent(client, drone, lock)
+        agent = GCSAgent(client, drone, lock, vehicles)
         agents.append(agent)
         agent.start()
+
 
     try:
         while True:
