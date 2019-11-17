@@ -70,29 +70,35 @@ class GCSAgent(threading.Thread):
 
             time.sleep(.5)
 
-            if self.msg:
-                # print("[GCS agent %s]" % self.id, "send to GCS server", self.msg)
-                self.sock.send(json.dumps(self.msg).encode())
+            try:
+                if self.msg:
+                    # print("[GCS agent %s]" % self.id, "send to GCS server", self.msg)
+                    self.sock.send(json.dumps(self.msg).encode())
 
 
-            read_sockets, _, _ = select.select([self.proxySock, self.sock], [], [], 0.1)
-            for s in read_sockets:
-                if s is self.proxySock:
+                read_sockets, _, _ = select.select([self.proxySock, self.sock], [], [], 0.1)
+                for s in read_sockets:
+                    if s is self.proxySock:
 
-                    data = self.proxySock.recv(2048)
-                    # print("[GCS agent %s]" % self.id, "received data:", data)
-                    data_unpacked = msgpack.unpackb(data)
-                    # print (self.name, "received data: ", data_unpacked)
+                        try:
+                            data = self.proxySock.recv(2048)
+                            # print("[GCS agent %s]" % self.id, "received data:", data)
+                            data_unpacked = msgpack.unpackb(data)
+                            # print ("[GCS agent %s]" % self.id, "received data: ", data_unpacked)
 
-                    self.msg = self.build_msg(data_unpacked)
-                    # print("[GCS agent %s]" % self.id, self.msg)
+                            self.msg = self.build_msg(data_unpacked)
+                            # print("[GCS agent %s]" % self.id, self.msg)
+                        except:
+                            continue
 
-                elif s is self.sock:
-                    data = json.loads(self.sock.recv(2048))
-                    print("[GCS agent %s]" % self.id, "received data:", data)
+                    elif s is self.sock:
+                        data = json.loads(self.sock.recv(2048))
+                        # print("[GCS agent %s]" % self.id, "received data:", data)
 
-                    cmdMsg = self.build_cmd_msg(data)
-                    self.proxySock.send(msgpack.packb(cmdMsg))
+                        cmdMsg = self.build_cmd_msg(data)
+                        self.proxySock.send(msgpack.packb(cmdMsg))
+            except socket.error:
+                break
 
         self.proxySock.close()
         self.sock.close()
@@ -135,8 +141,6 @@ class GCSAgent(threading.Thread):
             cmdMsg[GcsMsgIndex.CMD] = CMDIndex.LAND
         elif msg["command"] == "goHome": 
             cmdMsg[GcsMsgIndex.CMD] = CMDIndex.GOHOME
-        elif msg["command"] == "goForward": 
-            cmdMsg[GcsMsgIndex.CMD] = CMDIndex.GOFORWARD
         elif msg["command"] == "stop": 
             cmdMsg[GcsMsgIndex.CMD] = CMDIndex.STOP
 

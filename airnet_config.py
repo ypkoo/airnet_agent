@@ -14,6 +14,6 @@ class GcsMsgIndex(object):
 	CMD, G_LAT, G_LNG, G_ALT = range(IDX_NUM)
 
 class CMDIndex(object):
-	IDX_NUM = 6
-	TAKEOFF, MOVE, LAND, GOHOME, GOFORWARD, STOP = range(IDX_NUM)
+	IDX_NUM = 5
+	TAKEOFF, MOVE, LAND, GOHOME, STOP = range(IDX_NUM)
 

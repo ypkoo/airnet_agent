@@ -1,4 +1,5 @@
 import airsim
+from airsim import DrivetrainType
 from airnet_config import * 
 import socket, threading, time, json, select, datetime
 import msgpack
@@ -77,20 +78,25 @@ class AirnetAgent(threading.Thread):
             msg = self.build_msg()
             # print(self.name, msg)
             msg_packed = msgpack.packb(msg, use_bin_type=True)
-            self.sock.send(msg_packed)
-            # print("[Airnet agent %s]" % self.id, "msg sent:", msg)
 
-            ready = select.select([self.sock], [], [], 0.1)
-            if ready[0]:
-                data = self.sock.recv(2048)
-                data_unpacked = msgpack.unpackb(data)
-                print ("[Airnet agent %s]" % self.id, "received data: ", data_unpacked)
+            try:
+                self.sock.send(msg_packed)
+                # print("[Airnet agent %s]" % self.id, "msg sent:", msg)
 
-                cmd = data_unpacked[GcsMsgIndex.CMD]
-                self.process_command(cmd)
+            
+                readable, _, _ = select.select([self.sock], [], [], 0.1)
+                if readable:
+                    data = self.sock.recv(2048)
+                    data_unpacked = msgpack.unpackb(data)
+                    print ("[Airnet agent %s]" % self.id, "received data: ", data_unpacked)
 
-            else:
-                continue
+                    cmd = data_unpacked[GcsMsgIndex.CMD]
+                    self.process_command(cmd)
+
+                else:
+                    continue
+            except socket.error:
+                break
 
         self.sock.close()
 
@@ -156,11 +162,6 @@ class AirnetAgent(threading.Thread):
         elif cmd == CMDIndex.GOHOME:
             self.lock.acquire()
             self.client.goHomeAsync(vehicle_name=self.name)
-            self.lock.release()
-
-        elif cmd == CMDIndex.GOFORWARD:
-            self.lock.acquire()
-            self.client.moveByVelocityAsync(5, 0, 0, duration=3, drivetrain = DrivetrainType.ForwardOnly, vehicle_name=self.name)
             self.lock.release()
         elif cmd == CMDIndex.STOP:
             self.lock.acquire()
