@@ -29,7 +29,7 @@ class AirnetServer(threading.Thread):
             drone_id = msgpack.unpackb(data)
             drone_name = "Drone" + str(drone_id[0])
 
-            print("new connection: %s" % drone_name)
+            print("[Airnet Server] new connection: %s" % drone_name)
 
             agent = AirnetAgent(self.client, drone_name, self.lock, conn, self.vehicles[drone_name])
             agent.start()
@@ -72,7 +72,7 @@ class AirnetAgent(threading.Thread):
         while self.alive.isSet():
             time.sleep(.5)
             msg = self.build_msg()
-            print(self.name, msg)
+            # print(self.name, msg)
             msg_packed = msgpack.packb(msg, use_bin_type=True)
             self.sock.send(msg_packed)
 
